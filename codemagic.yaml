@@ -1,0 +1,41 @@
+workflows:
+  captup-ios:
+    name: CaptUp iOS - App Store
+    max_build_duration: 30
+    instance_type: mac_mini_m2
+    integrations:
+      app_store_connect: CaptUp
+    environment:
+      groups:
+        - signature
+      vars:
+        BUNDLE_ID: "fr.dbsconseil.captup"
+        XCODE_PROJECT: "CaptUp.xcodeproj"
+        XCODE_SCHEME: "CaptUp"
+      xcode: latest
+    scripts:
+      - name: Numero de build
+        script: |
+          sed -i '' "s/CURRENT_PROJECT_VERSION = 1;/CURRENT_PROJECT_VERSION = ${PROJECT_BUILD_NUMBER:-1};/g" "$XCODE_PROJECT/project.pbxproj"
+          grep -c "CURRENT_PROJECT_VERSION" "$XCODE_PROJECT/project.pbxproj"
+      - name: Verification de la compilation (sans signature)
+        script: |
+          xcodebuild -project "$XCODE_PROJECT" -scheme "$XCODE_SCHEME" -configuration Debug -sdk iphonesimulator -destination "generic/platform=iOS Simulator" CODE_SIGNING_ALLOWED=NO build
+      - name: Trousseau
+        script: keychain initialize
+      - name: Certificat et profil de distribution
+        script: app-store-connect fetch-signing-files "$BUNDLE_ID" --type IOS_APP_STORE --create
+      - name: Installation du certificat
+        script: keychain add-certificates
+      - name: Reglages de signature
+        script: xcode-project use-profiles
+      - name: Compilation de l'application
+        script: xcode-project build-ipa --project "$XCODE_PROJECT" --scheme "$XCODE_SCHEME"
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
+    publishing:
+      app_store_connect:
+        auth: integration
+        submit_to_testflight: false
+        submit_to_app_store: false
